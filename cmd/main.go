@@ -12,6 +12,7 @@ const (
 )
 
 func main() {
+	clientAddr := fmt.Sprintf("localhost%s", port)
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -23,5 +24,6 @@ func main() {
 	}()
 
 	library.InitializeLibrary()
+	go library.StartHTTPServer(clientAddr)
 	library.StartLibraryServer(lis)
 }

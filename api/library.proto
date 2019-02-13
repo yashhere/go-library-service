@@ -1,14 +1,44 @@
 syntax = "proto3";
 package library;
 import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
 
 service LibraryService {
-  rpc ListAllBooks(Empty) returns (Books);
-  rpc AddBook(Book) returns (Response);
-  rpc DeleteBook(QueryFormat) returns (Response);
-  rpc SearchBook(QueryFormat) returns (Response);
-  rpc IssueBook(QueryFormat) returns (Response);
-  rpc ReturnBook(QueryFormat) returns (Response);
+  rpc ListAllBooks(Empty) returns (Books) {
+    option (google.api.http) = {
+      get : "/listBooks"
+    };
+  };
+  rpc AddBook(Book) returns (Response) {
+    option (google.api.http) = {
+      post : "/addBook"
+      body : "*"
+    };
+  };
+  rpc DeleteBook(QueryFormat) returns (Response) {
+    option (google.api.http) = {
+      post : "/deleteBook"
+      body : "*"
+    };
+  };
+  rpc SearchBook(QueryFormat) returns (Response) {
+    option (google.api.http) = {
+      post : "/searchBook"
+      body : "*"
+    };
+  };
+  rpc IssueBook(QueryFormat) returns (Response) {
+    option (google.api.http) = {
+      post : "/issueBook"
+      body : "*"
+    };
+  };
+  rpc ReturnBook(QueryFormat) returns (Response) {
+    option (google.api.http) = {
+      post : "/returnBook"
+      body : "*"
+    };
+  };
 }
 
 // the library

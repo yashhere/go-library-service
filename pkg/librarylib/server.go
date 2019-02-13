@@ -2,11 +2,15 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
+
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 
 	library "personal-learning/go-library/api"
 
@@ -20,6 +24,10 @@ var (
 )
 
 type server struct{}
+
+type errorBody struct {
+	Err string `json:"error,omitempty"`
+}
 
 /*
 InitializeLibrary is used to Initialize the libraryData variable.
@@ -279,6 +287,21 @@ func (s *server) ReturnBook(ctx context.Context, query *library.QueryFormat) (*l
 	return res, nil
 }
 
+// StartHTTPServer - Start the HTTP Server
+func StartHTTPServer(clientAddr string) {
+	log.Printf("Starting HTTP Server...")
+	runtime.HTTPError = CustomHTTPError
+
+	addr := ":8181"
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	mux := runtime.NewServeMux()
+	if err := library.RegisterLibraryServiceHandlerFromEndpoint(context.Background(), mux, clientAddr, opts); err != nil {
+		log.Fatalf("failed to start HTTP server: %v", err)
+	}
+	log.Printf("HTTP Listening on %s\n", addr)
+	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
 // StartLibraryServer - Start the GRPC Server
 func StartLibraryServer(lis net.Listener) {
 	log.Printf("Starting GRPC server...")
@@ -290,5 +313,20 @@ func StartLibraryServer(lis net.Listener) {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("Failed to Serve: %v", err)
 		os.Exit(1)
+	}
+}
+
+// CustomHTTPError - Custom HTTP error on errors in StartHTTPServer
+func CustomHTTPError(ctx context.Context, _ *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, _ *http.Request, err error) {
+	const fallback = `{"error": "failed to marshal error message"}`
+
+	w.Header().Set("Content-type", marshaler.ContentType())
+	w.WriteHeader(runtime.HTTPStatusFromCode(grpc.Code(err)))
+	jErr := json.NewEncoder(w).Encode(errorBody{
+		Err: grpc.ErrorDesc(err),
+	})
+
+	if jErr != nil {
+		w.Write([]byte(fallback))
 	}
 }
