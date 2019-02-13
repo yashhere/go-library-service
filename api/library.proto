@@ -1,0 +1,86 @@
+syntax = "proto3";
+package library;
+import "google/protobuf/timestamp.proto";
+
+service LibraryService {
+  rpc ListAllBooks(Empty) returns (Books);
+  rpc AddBook(Book) returns (Response);
+  rpc DeleteBook(QueryFormat) returns (Response);
+  rpc SearchBook(QueryFormat) returns (Response);
+  rpc IssueBook(QueryFormat) returns (Response);
+  rpc ReturnBook(QueryFormat) returns (Response);
+}
+
+// the library
+message Library {
+  Books books = 1;
+  repeated Borrower current_borrowers = 2;
+}
+
+message Books { repeated Book books = 1; }
+
+// metadata about a book
+message Book {
+  string title = 1;
+  string author = 2;
+  string isbn = 3;
+  int32 no_of_copies = 5;
+  repeated IssueRecord issue_records = 6;
+}
+
+// details of issue record for each book
+message IssueRecord {
+  enum BorrowerType {
+    Faculty = 0;
+    Student = 1;
+    Administration = 2;
+  }
+  BorrowerType borrower = 1;
+  google.protobuf.Timestamp issue_date = 2;
+  google.protobuf.Timestamp return_date = 3;
+}
+
+// details about a borrower
+message Borrower {
+  enum BorrowerType {
+    Faculty = 0;
+    Student = 1;
+    Administration = 2;
+  }
+
+  string name = 1;
+  string id_no = 2;
+  repeated BookIssued books_issued = 3;
+  BorrowerType borrower_type = 4;
+}
+
+// which book, a borrower has borrowed currently?
+message BookIssued {
+  string isbn = 1;
+  google.protobuf.Timestamp issue_date = 2;
+}
+
+message QueryFormat {
+  enum BorrowerType {
+    Faculty = 0;
+    Student = 1;
+    Administration = 2;
+  }
+
+  string isbn = 1;
+  string name = 2;
+  string id_no = 3;
+  BorrowerType borrower_type = 4;
+}
+
+message Response {
+  string action = 1;
+  string status = 2;
+  string message = 3;
+  oneof value {
+    Book book = 4;
+    Borrower borrower_data = 5;
+  }
+}
+
+message Empty {}
