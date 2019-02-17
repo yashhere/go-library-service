@@ -1,23 +1,17 @@
 syntax = "proto3";
 package library;
-import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
 
 service LibraryService {
-  rpc ListAllBooks(Empty) returns (Books) {
+  rpc ListAllBooks(QueryFormat) returns (Books) {
     option (google.api.http) = {
-      get : "/listBooks"
-    };
-  };
-  rpc AddBook(Book) returns (Response) {
-    option (google.api.http) = {
-      post : "/addBook"
+      post : "/listBooks"
       body : "*"
     };
   };
-  rpc DeleteBook(QueryFormat) returns (Response) {
+  rpc AddBook(QueryFormat) returns (Response) {
     option (google.api.http) = {
-      post : "/deleteBook"
+      post : "/addBook"
       body : "*"
     };
   };
@@ -27,25 +21,10 @@ service LibraryService {
       body : "*"
     };
   };
-  rpc IssueBook(QueryFormat) returns (Response) {
-    option (google.api.http) = {
-      post : "/issueBook"
-      body : "*"
-    };
-  };
-  rpc ReturnBook(QueryFormat) returns (Response) {
-    option (google.api.http) = {
-      post : "/returnBook"
-      body : "*"
-    };
-  };
 }
 
 // the library
-message Library {
-  Books books = 1;
-  repeated Borrower current_borrowers = 2;
-}
+message Library { Books books = 1; }
 
 message Books { repeated Book books = 1; }
 
@@ -55,61 +34,35 @@ message Book {
   string author = 2;
   string isbn = 3;
   int32 no_of_copies = 5;
-  repeated IssueRecord issue_records = 6;
+  int32 access_level = 6;
 }
 
-// details of issue record for each book
-message IssueRecord {
-  enum BorrowerType {
-    Faculty = 0;
+// details about a user
+message User {
+  enum UserType {
+    GARBAGE = 0;
     Student = 1;
     Administration = 2;
-  }
-  BorrowerType borrower = 1;
-  google.protobuf.Timestamp issue_date = 2;
-  google.protobuf.Timestamp return_date = 3;
-}
-
-// details about a borrower
-message Borrower {
-  enum BorrowerType {
-    Faculty = 0;
-    Student = 1;
-    Administration = 2;
+    Faculty = 3;
   }
 
   string name = 1;
-  string id_no = 2;
-  repeated BookIssued books_issued = 3;
-  BorrowerType borrower_type = 4;
-}
-
-// which book, a borrower has borrowed currently?
-message BookIssued {
-  string isbn = 1;
-  google.protobuf.Timestamp issue_date = 2;
+  int32 id_no = 2;
+  UserType user_type = 4;
 }
 
 message QueryFormat {
-  enum BorrowerType {
-    Faculty = 0;
-    Student = 1;
-    Administration = 2;
-  }
-
-  string isbn = 1;
-  string name = 2;
-  string id_no = 3;
-  BorrowerType borrower_type = 4;
+  Book book = 1;
+  User user = 2;
 }
 
 message Response {
   string action = 1;
-  string status = 2;
+  int32 status = 2;
   string message = 3;
   oneof value {
     Book book = 4;
-    Borrower borrower_data = 5;
+    User user_data = 5;
   }
 }
 

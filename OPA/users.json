@@ -1,0 +1,43 @@
+{
+  "users": [{
+      "name": "Harry Potter",
+      "idNo": 8041,
+      "user_type": 1
+    },
+    {
+      "name": "Albus Dumbledore",
+      "idNo": 1110,
+      "user_type": 3
+    },
+    {
+      "name": "Hermione Granger",
+      "idNo": 2471,
+      "user_type": 1
+    },
+    {
+      "name": "Ron Weasley",
+      "idNo": 7600,
+      "user_type": 1
+    },
+    {
+      "name": "Severus Snape",
+      "idNo": 6232,
+      "user_type": 3
+    },
+    {
+      "name": "Draco Malfoy",
+      "idNo": 7345,
+      "user_type": 1
+    },
+    {
+      "name": "Hagrid",
+      "idNo": 1235,
+      "user_type": 2
+    },
+    {
+      "name": "Irma Pince",
+      "idNo": 4521,
+      "user_type": 2
+    }
+  ]
+}

@@ -8,25 +8,33 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	resty "gopkg.in/resty.v1"
 
 	library "personal-learning/go-library/api"
 
-	ptypes "github.com/golang/protobuf/ptypes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
 var (
 	libraryData *library.Library // store the library data
+	opaURL      string
 )
 
 type server struct{}
 
 type errorBody struct {
 	Err string `json:"error,omitempty"`
+}
+
+func getOpaURL() string {
+	port := os.Getenv("OPA_PORT")
+	if len(port) == 0 {
+		port = "8080"
+	}
+	return "http://localhost:" + port
 }
 
 /*
@@ -41,21 +49,13 @@ func InitializeLibrary() {
 		Books: &library.Books{
 			Books: make([]*library.Book, 0),
 		},
-		CurrentBorrowers: make([]*library.Borrower, 0),
 	}
 }
 
-// get port number from environment variable PORT. If not set, use 50051.
-func getPort() string {
-	port := os.Getenv("PORT")
-	if len(port) == 0 {
-		port = "50051"
-	}
-	return ":" + port
-}
-
-// search Book by ISBN in the library. If found, return the index of the
-// book alongwith a boolean indicating that the book exists.
+/*
+search Book by ISBN in the library. If found, return the index of the
+book alongwith a boolean indicating that the book exists.
+*/
 func searchBook(isbn string) (int, bool) {
 	i := 0
 	exists := false
@@ -72,217 +72,96 @@ func searchBook(isbn string) (int, bool) {
 	return -1, false
 }
 
-// search for a user by ID in borrowers' list
-func searchBorrowerData(id string) (int, bool) {
-	i := 0
-	exists := false
-	var borrower *library.Borrower
-	for i, borrower = range libraryData.CurrentBorrowers {
-		if borrower.IdNo == id {
-			exists = true
-			break
-		}
-	}
-	if i <= (len(libraryData.CurrentBorrowers)-1) && exists == true {
-		return i, exists
-	}
-	return -1, false
-}
-
-// Delete a book from Library
-func deleteBook(isbn string) bool {
-	index, exists := searchBook(isbn)
-
-	// we do not care about the order of the books in the library.
-	if index != -1 && exists == true {
-		libraryData.Books.Books[index] = libraryData.Books.Books[len(libraryData.Books.Books)-1]
-		libraryData.Books.Books = libraryData.Books.Books[:len(libraryData.Books.Books)-1]
-		return true
-	}
-	return false
-}
-
-// Issue a book to some borrower and add it to her borrower's list
-func addToBorrowerList(query *library.QueryFormat, book *library.BookIssued) int {
-	name := query.Name
-	id := query.IdNo
-	borrowerType := library.Borrower_BorrowerType(query.BorrowerType)
-
-	index, exists := searchBorrowerData(id)
-	if exists == false {
-		var borrowerData *library.Borrower
-		borrowerData = &library.Borrower{}
-		borrowerData.Name = name
-		borrowerData.IdNo = id
-		borrowerData.BorrowerType = borrowerType
-		borrowerData.BooksIssued = append(borrowerData.BooksIssued, book)
-		libraryData.CurrentBorrowers = append(libraryData.CurrentBorrowers, borrowerData)
-		return len(libraryData.CurrentBorrowers) - 1
-	} else {
-		libraryData.CurrentBorrowers[index].BooksIssued = append(libraryData.CurrentBorrowers[index].BooksIssued, book)
-		return index
-	}
-}
-
 // GRPC method to return a list of all library book
-func (s *server) ListAllBooks(ctx context.Context, empty *library.Empty) (*library.Books, error) {
-	b := new(library.Books)
-	b.Books = libraryData.Books.Books
-	return b, nil
-}
+func (s *server) ListAllBooks(ctx context.Context, query *library.QueryFormat) (*library.Books, error) {
+	res := new(library.Books)
+	url := opaURL + "/v1/data/library/list_all_books"
 
-// GRPC method to add a book to the library.
-func (s *server) AddBook(ctx context.Context, book *library.Book) (*library.Response, error) {
-	res := new(library.Response)
-	_, exists := searchBook(book.Isbn)
-	if exists == false {
-		libraryData.Books.Books = append(libraryData.Books.Books, book)
-		res.Action = "Add"
-		res.Status = "200"
-		res.Message = "Book successfully added"
-	} else {
-		res.Action = "Add"
-		res.Status = "200"
-		res.Message = "Book already exists in the library. To update, use /updateBook."
+	fmt.Println(query)
+	input := make(map[string]*library.QueryFormat, 0)
+	input["input"] = query
+
+	fmt.Println(input)
+	resp, err := resty.R().
+		SetBody(input).
+		Post(url)
+
+	if err != nil {
+		log.Fatalf("%v", err)
+		return res, err
+	}
+
+	var raw map[string][]*library.Book
+	err = json.Unmarshal(resp.Body(), &raw)
+
+	fmt.Println(resp)
+	fmt.Println(raw)
+
+	if err != nil {
+		log.Fatalf("%v", err)
+		return res, err
+	}
+
+	if len(raw["result"]) != 0 {
+		res.Books = raw["result"]
 	}
 
 	return res, nil
 }
 
-// GRPC method to delete a book from the library
-func (s *server) DeleteBook(ctx context.Context, query *library.QueryFormat) (*library.Response, error) {
+// GRPC method to add a book to the library.
+func (s *server) AddBook(ctx context.Context, query *library.QueryFormat) (*library.Response, error) {
 	res := new(library.Response)
-	if query.Isbn == "" {
-		res.Action = "Delete"
-		res.Status = "403"
-		res.Message = "ISBN not supplied."
-	} else {
-		ok := deleteBook(query.Isbn)
-		if ok {
-			res.Action = "Delete"
-			res.Status = "403"
-			res.Message = "Book successfully deleted."
-		} else {
-			res.Action = "Delete"
-			res.Status = "403"
-			res.Message = "ISBN not found."
-		}
+	if query.User.UserType != library.User_UserType(2) {
+		res.Action = "Add"
+		res.Status = 403
+		res.Message = "You are not allowed to add books."
+		return res, nil
 	}
+
+	url := opaURL + "/v1/data/books/" + query.Book.Isbn
+	resp, err := resty.R().
+		SetBody(query.Book).
+		Put(url)
+
+	res.Action = "Add"
+	res.Status = int32(resp.StatusCode())
+	res.Message = resp.Status()
+	fmt.Println(resp, err)
+
 	return res, nil
 }
 
 // GRPC method to search a book in the library.
 func (s *server) SearchBook(ctx context.Context, query *library.QueryFormat) (*library.Response, error) {
 	res := new(library.Response)
-	index, exists := searchBook(query.Isbn)
-	if exists == false {
+	input := make(map[string]*library.QueryFormat, 0)
+
+	input["input"] = query
+	url := opaURL + "/v1/data/library/search_books"
+	resp, _ := resty.R().
+		SetBody(input).
+		Post(url)
+
+	var raw map[string][]*library.Book
+	err := json.Unmarshal(resp.Body(), &raw)
+
+	if err != nil {
+		log.Fatalf("%v", err)
+		return res, err
+	}
+
+	if len(raw["result"]) == 0 {
 		res.Action = "Search"
-		res.Status = "403"
+		res.Status = int32(resp.StatusCode())
 		res.Message = "Book not found."
 	} else {
 		res.Action = "Search"
-		res.Status = "200"
-		res.Message = "Book found."
+		res.Status = int32(resp.StatusCode())
+		res.Message = resp.Status()
 		res.Value = &library.Response_Book{
-			Book: libraryData.Books.Books[index],
+			Book: raw["result"][0],
 		}
-	}
-	return res, nil
-}
-
-// GRPC method to issue a book to the requestor.
-func (s *server) IssueBook(ctx context.Context, query *library.QueryFormat) (*library.Response, error) {
-	res := new(library.Response)
-	if query.Name == "" || query.IdNo == "" || query.Isbn == "" || query.BorrowerType == library.QueryFormat_BorrowerType(0) {
-		res.Action = "Issue"
-		res.Status = "403"
-		res.Message = "Data insufficient"
-		return res, nil
-	}
-	_, exists := searchBook(query.Isbn)
-
-	if exists == false {
-		res.Action = "Search"
-		res.Status = "403"
-		res.Message = "Book not found."
-		return res, nil
-	}
-
-	i, exists := searchBorrowerData(query.IdNo)
-
-	if exists {
-		for _, book := range libraryData.CurrentBorrowers[i].BooksIssued {
-			if book.Isbn == query.Isbn {
-				res.Action = "IssueBook"
-				res.Status = "403"
-				res.Message = fmt.Sprintf("Book ISBN %s is already issued to user %s.", book.Isbn, query.Name)
-				return res, nil
-			}
-		}
-	}
-
-	res.Action = "IssueBook"
-	res.Status = "200"
-	res.Message = fmt.Sprintf("Book is issued to user %s.", query.Name)
-
-	issueDate, _ := ptypes.TimestampProto(time.Now())
-	issuedBook := &library.BookIssued{
-		Isbn:      query.Isbn,
-		IssueDate: issueDate,
-	}
-	i = addToBorrowerList(query, issuedBook)
-
-	res.Value = &library.Response_BorrowerData{
-		BorrowerData: &library.Borrower{
-			Name:         query.Name,
-			IdNo:         query.IdNo,
-			BooksIssued:  libraryData.CurrentBorrowers[i].BooksIssued,
-			BorrowerType: library.Borrower_BorrowerType(query.BorrowerType),
-		},
-	}
-
-	return res, nil
-}
-
-// GRPC method to return a book
-func (s *server) ReturnBook(ctx context.Context, query *library.QueryFormat) (*library.Response, error) {
-	res := new(library.Response)
-	if query.Name == "" || query.IdNo == "" || query.Isbn == "" || query.BorrowerType == library.QueryFormat_BorrowerType(0) {
-		res.Action = "Return"
-		res.Status = "403"
-		res.Message = "Data insufficient"
-		return res, nil
-	}
-
-	i, exists := searchBorrowerData(query.IdNo)
-
-	bookFound := false
-	if exists {
-		for index, book := range libraryData.CurrentBorrowers[i].BooksIssued {
-			if book.Isbn == query.Isbn {
-				bookFound = true
-				libraryData.CurrentBorrowers[i].BooksIssued[index] = libraryData.CurrentBorrowers[i].BooksIssued[len(libraryData.CurrentBorrowers[i].BooksIssued)-1]
-				libraryData.CurrentBorrowers[i].BooksIssued = libraryData.CurrentBorrowers[i].BooksIssued[:len(libraryData.CurrentBorrowers[i].BooksIssued)-1]
-				res.Action = "ReturnBook"
-				res.Status = "200"
-				res.Message = "Book successfully returned."
-				res.Value = &library.Response_BorrowerData{
-					BorrowerData: &library.Borrower{
-						Name:         query.Name,
-						IdNo:         query.IdNo,
-						BooksIssued:  libraryData.CurrentBorrowers[i].BooksIssued,
-						BorrowerType: library.Borrower_BorrowerType(query.BorrowerType),
-					},
-				}
-				return res, nil
-			}
-		}
-	}
-
-	if bookFound == false {
-		res.Action = "ReturnBook"
-		res.Status = "403"
-		res.Message = fmt.Sprintf("Book ISBN %s is not issued to the user %s. Can't return.", query.Isbn, query.Name)
 	}
 	return res, nil
 }
@@ -304,6 +183,7 @@ func StartHTTPServer(clientAddr string) {
 
 // StartLibraryServer - Start the GRPC Server
 func StartLibraryServer(lis net.Listener) {
+	opaURL = getOpaURL()
 	log.Printf("Starting GRPC server...")
 	s := grpc.NewServer()
 	library.RegisterLibraryServiceServer(s, &server{})
