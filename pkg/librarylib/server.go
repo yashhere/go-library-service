@@ -19,8 +19,7 @@ import (
 )
 
 var (
-	libraryData *library.Library // store the library data
-	opaURL      string
+	opaURL string
 )
 
 type server struct{}
@@ -35,41 +34,6 @@ func getOpaURL() string {
 		port = "8080"
 	}
 	return "http://localhost:" + port
-}
-
-/*
-InitializeLibrary is used to Initialize the libraryData variable.
-We are using a global variable to store our library data. This way
-we avoid the need of a DB. In real world, it is always a good idea
-to use a DB to persist data to prevent data loss due to unavoidable
-circumstances.
-*/
-func InitializeLibrary() {
-	libraryData = &library.Library{
-		Books: &library.Books{
-			Books: make([]*library.Book, 0),
-		},
-	}
-}
-
-/*
-search Book by ISBN in the library. If found, return the index of the
-book alongwith a boolean indicating that the book exists.
-*/
-func searchBook(isbn string) (int, bool) {
-	i := 0
-	exists := false
-	var book *library.Book
-	for i, book = range libraryData.Books.Books {
-		if book.Isbn == isbn {
-			exists = true
-			break
-		}
-	}
-	if i <= (len(libraryData.Books.Books)-1) && exists == true {
-		return i, exists
-	}
-	return -1, false
 }
 
 // GRPC method to return a list of all library book
@@ -93,9 +57,6 @@ func (s *server) ListAllBooks(ctx context.Context, query *library.QueryFormat) (
 
 	var raw map[string][]*library.Book
 	err = json.Unmarshal(resp.Body(), &raw)
-
-	fmt.Println(resp)
-	fmt.Println(raw)
 
 	if err != nil {
 		log.Fatalf("%v", err)

@@ -40,7 +40,7 @@ message Book {
 // details about a user
 message User {
   enum UserType {
-    GARBAGE = 0;
+    GARBAGE = 0; // https://github.com/golang/protobuf/issues/258
     Student = 1;
     Administration = 2;
     Faculty = 3;
